@@ -1,4 +1,10 @@
---[[ uosc 4.5.0 - 2022-Dec-07 | https://github.com/tomasklaen/uosc ]]
+--[[
+SOURCE_ https://github.com/tomasklaen/uosc/tree/main/scripts
+COMMIT_ b32ae2abaf52a22387e00dd2ade8659968554ab0
+
+极简主义设计驱动的多功能界面脚本群组，兼容 thumbfast 新缩略图引擎
+]]--
+
 local uosc_version = '4.5.0'
 
 assdraw = require('mp.assdraw')
@@ -22,53 +28,53 @@ defaults = {
 	timeline_line_width_fullscreen = 3,
 	timeline_line_width_minimized_scale = 10,
 	timeline_size_min = 2,
-	timeline_size_max = 40,
+	timeline_size_max = 20,
 	timeline_size_min_fullscreen = 0,
 	timeline_size_max_fullscreen = 60,
 	timeline_start_hidden = false,
-	timeline_persistency = 'paused',
 	timeline_opacity = 0.9,
 	timeline_border = 1,
 	timeline_step = 5,
 	timeline_chapters_opacity = 0.8,
 	timeline_cache = true,
+	timeline_persistency = 'idle,audio',
 
-	controls = 'menu,gap,subtitles,<has_many_audio>audio,<has_many_video>video,<has_many_edition>editions,<stream>stream-quality,gap,space,speed,space,shuffle,loop-playlist,loop-file,gap,prev,items,next,gap,fullscreen',
+	controls = 'menu,<has_chapter>chapters,gap,play_pause,gap,subtitles,audio,script-stats,<has_many_edition>editions,<has_many_video>video,<stream>stream-quality,gap,space,speed,space,shuffle,loop-playlist,loop-file,gap,prev,items,next,gap,fullscreen',
 	controls_size = 32,
 	controls_size_fullscreen = 40,
 	controls_margin = 8,
 	controls_spacing = 2,
-	controls_persistency = '',
+	controls_persistency = 'idle,audio',
 
 	volume = 'right',
 	volume_size = 40,
 	volume_size_fullscreen = 52,
-	volume_persistency = '',
 	volume_opacity = 0.9,
 	volume_border = 1,
 	volume_step = 1,
+	volume_persistency = 'idle,audio',
 
-	speed_persistency = '',
 	speed_opacity = 0.6,
 	speed_step = 0.1,
 	speed_step_is_factor = false,
+	speed_persistency = 'idle,audio',
 
 	menu_item_height = 36,
 	menu_item_height_fullscreen = 50,
 	menu_min_width = 260,
 	menu_min_width_fullscreen = 360,
-	menu_opacity = 1,
-	menu_parent_opacity = 0.4,
+	menu_opacity = 0.9,
+	menu_parent_opacity = 0.6,
 
 	top_bar = 'no-border',
 	top_bar_size = 40,
 	top_bar_size_fullscreen = 46,
-	top_bar_persistency = '',
 	top_bar_controls = true,
 	top_bar_title = 'yes',
 	top_bar_alt_title = '',
 	top_bar_alt_title_place = 'below',
 	top_bar_title_opacity = 0.8,
+	top_bar_persistency = 'idle,audio',
 
 	window_border_size = 1,
 	window_border_opacity = 0.8,
@@ -79,6 +85,7 @@ defaults = {
 
 	ui_scale = 1,
 	font_scale = 1,
+	font_bold = false,
 	text_border = 1.2,
 	text_width_estimation = true,
 	pause_on_click_shorter_than = 0, -- deprecated by below
@@ -94,7 +101,6 @@ defaults = {
 	total_time = false, -- deprecated by below
 	destination_time = 'playtime-remaining',
 	time_precision = 0,
-	font_bold = false,
 	autohide = false,
 	buffered_time_threshold = 60,
 	pause_indicator = 'flash',
@@ -108,6 +114,9 @@ defaults = {
 	use_trash = false,
 	chapter_ranges = 'openings:30abf964,endings:30abf964,ads:c54e4e80',
 	chapter_range_patterns = 'openings:オープニング;endings:エンディング',
+
+	idle_call_menu = 0,                       -- 空闲自动弹出上下文菜单
+	custom_font = '',                         -- 自定义界面字体
 }
 options = table_shallow_copy(defaults)
 opt.read_options(options, 'uosc')
@@ -132,35 +141,42 @@ fgt, bgt = serialize_rgba(options.foreground_text).color, serialize_rgba(options
 
 --[[ CONFIG ]]
 
-function create_default_menu()
+-- 上下文菜单的默认内容
+local function create_default_menu()
 	return {
-		{title = 'Subtitles', value = 'script-binding uosc/subtitles'},
-		{title = 'Audio tracks', value = 'script-binding uosc/audio'},
-		{title = 'Stream quality', value = 'script-binding uosc/stream-quality'},
-		{title = 'Playlist', value = 'script-binding uosc/items'},
-		{title = 'Chapters', value = 'script-binding uosc/chapters'},
-		{title = 'Navigation', items = {
-			{title = 'Next', hint = 'playlist or file', value = 'script-binding uosc/next'},
-			{title = 'Prev', hint = 'playlist or file', value = 'script-binding uosc/prev'},
-			{title = 'Delete file & Next', value = 'script-binding uosc/delete-file-next'},
-			{title = 'Delete file & Prev', value = 'script-binding uosc/delete-file-prev'},
-			{title = 'Delete file & Quit', value = 'script-binding uosc/delete-file-quit'},
-			{title = 'Open file', value = 'script-binding uosc/open-file'},
+		{title = '加载', items = {
+			{title = '※ 文件浏览器', value = 'script-binding uosc/open-file'},
+			{title = '※ 导入 字幕轨', value = 'script-binding uosc/load-subtitles'},
 		},},
-		{title = 'Utils', items = {
-			{title = 'Aspect ratio', items = {
-				{title = 'Default', value = 'set video-aspect-override "-1"'},
-				{title = '16:9', value = 'set video-aspect-override "16:9"'},
-				{title = '4:3', value = 'set video-aspect-override "4:3"'},
-				{title = '2.35:1', value = 'set video-aspect-override "2.35:1"'},
-			},},
-			{title = 'Audio devices', value = 'script-binding uosc/audio-device'},
-			{title = 'Editions', value = 'script-binding uosc/editions'},
-			{title = 'Screenshot', value = 'async screenshot'},
-			{title = 'Show in directory', value = 'script-binding uosc/show-in-directory'},
-			{title = 'Open config folder', value = 'script-binding uosc/open-config-directory'},
+		{title = '导航', items = {
+			{title = '※ 播放列表', value = 'script-binding uosc/playlist'},
+			{title = '※ 版本列表', value = 'script-binding uosc/editions'},
+			{title = '※ 章节列表', value = 'script-binding uosc/chapters'},
+			{title = '※ 视频轨列表', value = 'script-binding uosc/video'},
+			{title = '※ 音频轨列表', value = 'script-binding uosc/audio'},
+			{title = '※ 字幕轨列表', value = 'script-binding uosc/subtitles'},
+			{title = '播放列表乱序重排', value = 'playlist-shuffle'},
 		},},
-		{title = 'Quit', value = 'quit'},
+		{title = '※ 截屏', value = 'script-binding uosc/shot'},
+		{title = '视频', items = {
+			{title = '切换 解码模式', value = 'cycle-values hwdec no auto auto-copy'},
+			{title = '切换 去色带状态', value = 'cycle deband'},
+			{title = '切换 去隔行状态', value = 'cycle deinterlace'},
+			{title = '切换 自动校色', value = 'cycle icc-profile-auto'},
+			{title = '切换 时间码解析模式', value = 'cycle correct-pts'},
+		},},
+		{title = '工具', items = {
+			{title = '开关 常驻统计信息', value = 'script-binding stats/display-stats-toggle'},
+			{title = '显示控制台', value = 'script-binding console/enable'},
+			{title = '切换 窗口边框', value = 'cycle border'},
+			{title = '切换 窗口置顶', value = 'cycle ontop'},
+			{title = '※ 音频输出设备列表', value = 'script-binding uosc/audio-device'},
+			{title = '※ 流式传输品质', value = 'script-binding uosc/stream-quality'},
+			{title = '※ 打开 当前文件所在路径', value = 'script-binding uosc/show-in-directory'},
+			{title = '※ 打开 设置目录', value = 'script-binding uosc/open-config-directory'},
+		},},
+		{title = '停止', value = 'stop'},
+		{title = '退出mpv', value = 'quit'},
 	}
 end
 
@@ -228,6 +244,18 @@ config = {
 
 						target_menu = by_id[submenu_id]
 					else
+						-- 判断是否点击后不立刻关闭菜单
+						local keep_open = title_part:sub(1, 3) == '-o '
+						if keep_open then
+							title_part = title_part:sub(4)
+						end
+
+						-- 判断是否点击后进行累加
+						local hold = title_part:sub(1, 3) == '-h '
+						if hold then
+							title_part = title_part:sub(4)
+						end
+
 						if command == 'ignore' then break end
 						-- If command is already in menu, just append the key to it
 						if target_menu.items_by_command[command] then
@@ -238,6 +266,8 @@ config = {
 								title = title_part,
 								hint = not is_dummy and key or nil,
 								value = command,
+								keep_open = keep_open,
+								hold = hold
 							}
 							target_menu.items_by_command[command] = item
 							target_menu.items[#target_menu.items + 1] = item
@@ -355,7 +385,7 @@ state = {
 	margin_bottom = 0,
 	hidpi_scale = 1,
 }
-thumbnail = {width = 0, height = 0, disabled = false}
+thumbnail = {width = 0, height = 0, disabled = false, pause = false}
 external = {} -- Properties set by external scripts
 key_binding_overwrites = {} -- Table of key_binding:mpv_command
 Elements = require('uosc_shared/elements/Elements')
@@ -770,9 +800,9 @@ mp.observe_property('core-idle', 'native', create_state_setter('core_idle'))
 --[[ KEY BINDS ]]
 
 -- Adds a key binding that respects rerouting set by `key_binding_overwrites` table.
----@param name string
----@param callback fun(event: table)
----@param flags nil|string
+--- name string
+--- callback fun(event: table)
+--- flags nil|string
 function bind_command(name, callback, flags)
 	mp.add_key_binding(nil, name, function(...)
 		if key_binding_overwrites[name] then mp.command(key_binding_overwrites[name])
@@ -802,9 +832,9 @@ bind_command('decide-pause-indicator', function() Elements.pause_indicator:decid
 bind_command('menu', function() toggle_menu_with_items() end)
 bind_command('menu-blurred', function() toggle_menu_with_items({mouse_nav = true}) end)
 local track_loaders = {
-	{name = 'subtitles', prop = 'sub', allowed_types = itable_join(config.types.video, config.types.subtitle)},
-	{name = 'audio', prop = 'audio', allowed_types = itable_join(config.types.video, config.types.audio)},
-	{name = 'video', prop = 'video', allowed_types = config.types.video},
+	{name = 'subtitles', hint = '字幕轨', prop = 'sub', allowed_types = config.subtitle_types},
+	{name = 'audio', hint = '音频轨', prop = 'audio', allowed_types = config.media_types},
+	{name = 'video', hint = '视频轨', prop = 'video', allowed_types = config.media_types},
 }
 for _, loader in ipairs(track_loaders) do
 	local menu_type = 'load-' .. loader.name
@@ -826,21 +856,21 @@ for _, loader in ipairs(track_loaders) do
 		open_file_navigation_menu(
 			path,
 			function(path) mp.commandv(loader.prop .. '-add', path) end,
-			{type = menu_type, title = 'Load ' .. loader.name, allowed_types = loader.allowed_types}
+			{type = menu_type, title = '导入 ' .. loader.hint, allowed_types = loader.allowed_types}
 		)
 	end)
 end
 bind_command('subtitles', create_select_tracklist_type_menu_opener(
-	'Subtitles', 'sub', 'sid', 'script-binding uosc/load-subtitles'
+	'字幕选择', 'sub', 'sid', 'script-binding uosc/load-subtitles'
 ))
 bind_command('audio', create_select_tracklist_type_menu_opener(
-	'Audio', 'audio', 'aid', 'script-binding uosc/load-audio'
+	'音频声轨选择', 'audio', 'aid', 'script-binding uosc/load-audio'
 ))
 bind_command('video', create_select_tracklist_type_menu_opener(
-	'Video', 'video', 'vid', 'script-binding uosc/load-video'
+	'视频选择', 'video', 'vid', 'script-binding uosc/load-video'
 ))
 bind_command('playlist', create_self_updating_menu_opener({
-	title = 'Playlist',
+	title = '播放列表',
 	type = 'playlist',
 	list_prop = 'playlist',
 	serializer = function(playlist)
@@ -860,7 +890,7 @@ bind_command('playlist', create_self_updating_menu_opener({
 	on_select = function(index) mp.commandv('set', 'playlist-pos-1', tostring(index)) end,
 }))
 bind_command('chapters', create_self_updating_menu_opener({
-	title = 'Chapters',
+	title = '章节列表',
 	type = 'chapters',
 	list_prop = 'chapter-list',
 	active_prop = 'chapter',
@@ -869,8 +899,8 @@ bind_command('chapters', create_self_updating_menu_opener({
 		chapters = normalize_chapters(chapters)
 		for index, chapter in ipairs(chapters) do
 			items[index] = {
-				title = chapter.title or '',
-				hint = format_time(chapter.time, state.duration),
+				title = chapter.title or '章节',
+				hint = mp.format_time(chapter.time),
 				value = index,
 				active = index - 1 == current_chapter,
 			}
@@ -880,7 +910,7 @@ bind_command('chapters', create_self_updating_menu_opener({
 	on_select = function(index) mp.commandv('set', 'chapter', tostring(index - 1)) end,
 }))
 bind_command('editions', create_self_updating_menu_opener({
-	title = 'Editions',
+	title = '版本列表',
 	type = 'editions',
 	list_prop = 'edition-list',
 	active_prop = 'current-edition',
@@ -888,7 +918,7 @@ bind_command('editions', create_self_updating_menu_opener({
 		local items = {}
 		for _, edition in ipairs(editions or {}) do
 			items[#items + 1] = {
-				title = edition.title or 'Edition',
+				title = edition.title or '版本',
 				hint = tostring(edition.id + 1),
 				value = edition.id,
 				active = edition.id == current_id,
@@ -926,7 +956,7 @@ bind_command('stream-quality', function()
 		items[#items + 1] = {title = height .. 'p', value = format, active = format == ytdl_format}
 	end
 
-	Menu:open({type = 'stream-quality', title = 'Stream quality', items = items}, function(format)
+	Menu:open({type = 'stream-quality', title = '流式传输品质', items = items}, function(format)
 		mp.set_property('ytdl-format', format)
 
 		-- Reload the video to apply new format
@@ -1056,7 +1086,7 @@ bind_command('delete-file-quit', function()
 	mp.command('quit')
 end)
 bind_command('audio-device', create_self_updating_menu_opener({
-	title = 'Audio devices',
+	title = '音频输出设备列表',
 	type = 'audio-device-list',
 	list_prop = 'audio-device-list',
 	active_prop = 'audio-device',
@@ -1100,6 +1130,42 @@ bind_command('open-config-directory', function()
 		msg.error('Couldn\'t serialize config path "' .. config_path .. '".')
 	end
 end)
+
+-- 菜单专用截屏
+mp.add_key_binding(nil, 'shot', function()
+	if Menu:is_open() then
+		local bak_opt1, bak_opt2, bak_opt3, bak_opt4 = options.curtain_opacity, options.menu_opacity, options.menu_parent_opacity, options.pause_indicator
+		options.curtain_opacity, options.menu_opacity, options.menu_parent_opacity = 0, 0, 0
+		-- 并非所有元素支持透明
+		local paused = mp.get_property_bool('pause')
+		if paused then
+			mp.add_timeout(200 / 1000, function() -- 延迟过低可能产生闪烁
+				mp.command('screenshot window')
+				options.curtain_opacity, options.menu_opacity, options.menu_parent_opacity = bak_opt1, bak_opt2, bak_opt3
+			end)
+		else
+			options.pause_indicator = 'manual'
+			mp.set_property_bool('pause', true)
+			mp.add_timeout(200 / 1000, function()
+				mp.command('screenshot window')
+				mp.set_property_bool('pause', false)
+				options.pause_indicator = bak_opt4
+				options.curtain_opacity, options.menu_opacity, options.menu_parent_opacity = bak_opt1, bak_opt2, bak_opt3
+			end)
+		end
+	else
+		mp.command('screenshot window')
+	end
+end)
+
+-- 空闲自动弹出上下文菜单
+if type(options.idle_call_menu) == 'number' then
+	if options.idle_call_menu <= 2 and options.idle_call_menu > config.render_delay then
+		mp.observe_property('idle-active', 'bool', function(_, value)
+			if value == true then mp.add_timeout(options.idle_call_menu, function() if Menu:is_open() then return else mp.command('script-binding uosc/menu-blurred') end end) end
+		end)
+	end
+end
 
 --[[ MESSAGE HANDLERS ]]
 

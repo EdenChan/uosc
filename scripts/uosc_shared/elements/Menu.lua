@@ -162,7 +162,7 @@ function Menu:update(data)
 
 			local item = {}
 			table_assign(item, item_data, {
-				'title', 'icon', 'hint', 'active', 'bold', 'italic', 'muted', 'value', 'keep_open', 'separator',
+				'title', 'icon', 'hint', 'active', 'bold', 'italic', 'muted', 'value', 'keep_open', 'separator', 'hold'
 			})
 			if item.keep_open == nil then item.keep_open = menu.keep_open end
 
@@ -481,11 +481,32 @@ function Menu:open_selected_item(opts)
 			self:tween(self.offset_x + menu.width / 2, 0, function(offset) self:set_offset_x(offset) end)
 			self.opacity = 1 -- in case tween above canceled fade in animation
 		else
-			self.callback(item.value, {modifiers = self.modifiers or {}})
+			if not item.hold then
+				self.callback(item.value)
+			end
 			if not item.keep_open and not opts.keep_open then self:close() end
 		end
 	end
 end
+
+-- test_timer = nil
+-- function testHandler(data)
+-- 	return function(data)
+-- 		if (data.event == "down") then
+-- 			if test_timer == nil then
+-- 				test_timer = mp.add_periodic_timer(1, function()
+-- 					print("time out 1111111")
+-- 				end)
+-- 			end
+-- 		elseif(data.event == "up") then
+-- 			if test_timer ~= nil then
+-- 				test_timer:kill()
+-- 				test_timer = nil
+-- 			end
+-- 		end
+-- 		print(utils.format_json(data))
+-- 	end
+-- end
 
 function Menu:open_selected_item_soft() self:open_selected_item({keep_open = true}) end
 function Menu:open_selected_item_preselect() self:open_selected_item({preselect_submenu_item = true}) end
@@ -493,6 +514,25 @@ function Menu:select_item_below_cursor() self.current.selected_index = self:get_
 
 function Menu:on_display() self:update_dimensions() end
 function Menu:on_prop_fullormaxed() self:update_content_dimensions() end
+
+function Menu:on_mbtn_left_down()
+	local menu = self.current
+	if menu.selected_index then
+		local item = menu.items[menu.selected_index]
+		if item.hold then
+			self.callback(item.value)
+			-- 按下左键，设置长按定时器，进行自动累加/重做
+			set_press_and_hold_timer(function()
+				self.callback(item.value)
+			end)
+		end
+	end
+end
+
+function Menu:on_mbtn_left_up()
+	-- 抬起左键，清除长按定时器，取消自动累加
+	unset_press_and_hold_timer()
+end
 
 function Menu:on_global_mbtn_left_down()
 	if self.proximity_raw == 0 then
@@ -517,7 +557,7 @@ end
 function Menu:on_global_mbtn_left_up()
 	if self.proximity_raw == 0 and self.drag_data and not self.is_dragging then
 		self:select_item_below_cursor()
-		self:open_selected_item({preselect_submenu_item = false, keep_open = self.modifiers and self.modifiers.shift})
+		self:open_selected_item({preselect_submenu_item = false})
 	end
 	if self.is_dragging then
 		local distance = self:fling_distance()

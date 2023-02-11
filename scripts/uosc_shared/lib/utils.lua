@@ -365,7 +365,7 @@ end
 ---@param delta number
 function navigate_directory(delta)
 	if not state.path or is_protocol(state.path) then return false end
-	local paths, current_index = get_adjacent_files(state.path, config.types.autoload)
+	local paths, current_index = get_adjacent_files(state.path, config.media_types)
 	if paths and current_index then
 		local _, path = decide_navigation_in_list(paths, current_index, delta)
 		if path then mp.commandv('loadfile', path) return true end
@@ -565,6 +565,33 @@ function render()
 	osd:update()
 
 	update_margins()
+end
+
+function set_press_and_hold_timer(fn)
+	-- 按住 0.3 秒后再触发设置自动累加/重做定时器
+	local spare_time = 0.3
+	local spare_time_counter = 0
+	-- 此处只能用 add_periodic_timer，才能保证在按键抬起可以 kill 掉 wrapTimer
+	-- 如果直接调 add_timeout 的话，不管长按时间有没有达到 0.3 秒，里面的逻辑都一定会执行
+	-- 这样有可能导致设置多个 PressAndHoldTimer，造成无法取消自动累加/重做
+	wrapTimer = mp.add_periodic_timer(spare_time, function()
+		spare_time_counter = spare_time_counter + 1
+		-- 只判断相等条件，保证只设置一次 PressAndHoldTimer
+		if spare_time_counter == 1 then
+			PressAndHoldTimer = mp.add_periodic_timer(0.1, fn)
+		end
+	end)
+end
+
+function unset_press_and_hold_timer()
+	if PressAndHoldTimer ~= nil then
+		PressAndHoldTimer:kill()
+		PressAndHoldTimer = nil
+	end
+	if wrapTimer ~= nil then
+		wrapTimer:kill()
+		wrapTimer = nil
+	end
 end
 
 -- Request that render() is called.

@@ -124,6 +124,7 @@ function Timeline:on_mouse_leave()
 	if not self.hovered_chapter then self:clear_thumbnail() end
 end
 function Timeline:on_global_mbtn_left_up()
+	if thumbnail.pause then thumbnail.pause = false end
 	if self.pressed then
 		mp.set_property_native('pause', self.pressed_pause)
 		self.pressed = false
@@ -139,6 +140,8 @@ Timeline.seek_timer = mp.add_timeout(0.05, function() Elements.timeline:set_from
 Timeline.seek_timer:kill()
 function Timeline:on_global_mouse_move()
 	if self.pressed then
+		thumbnail.pause = true
+		self:clear_thumbnail()
 		if self.width / state.duration < 10 then
 			self:set_from_cursor(true)
 			self.seek_timer:kill()
@@ -147,8 +150,8 @@ function Timeline:on_global_mouse_move()
 	end
 	self:determine_chapter_click_handler()
 end
-function Timeline:on_wheel_up() mp.commandv('seek', options.timeline_step) end
-function Timeline:on_wheel_down() mp.commandv('seek', -options.timeline_step) end
+function Timeline:on_wheel_up() mp.command('seek ' .. options.timeline_step .. " exact") end
+function Timeline:on_wheel_down() mp.command('seek ' .. -options.timeline_step .. " exact") end
 
 function Timeline:render()
 	if self.size_max == 0 then return end
@@ -216,7 +219,7 @@ function Timeline:render()
 	ass:draw_stop()
 
 	-- Progress
-	ass:rect(fax, fay, fbx, fby, {opacity = options.timeline_opacity})
+	ass:rect(fax, fay, fbx, fby, {opacity = options.timeline_opacity, color = serialize_rgba("666666").color})
 
 	-- Uncached ranges
 	local buffered_playtime = nil
@@ -326,10 +329,12 @@ function Timeline:render()
 	end
 
 	local function draw_timeline_text(x, y, align, text, opts)
-		opts.color, opts.border_color = fgt, fg
+		-- opts.color, opts.border_color = bgt, bg
+		opts.color, opts.border_color = bgt, "202331"
 		opts.clip = '\\clip(' .. foreground_coordinates .. ')'
 		ass:txt(x, y, align, text, opts)
-		opts.color, opts.border_color = bgt, bg
+		-- opts.color, opts.border_color = bgt, bg
+		opts.color, opts.border_color = bgt, "202331"
 		opts.clip = '\\iclip(' .. foreground_coordinates .. ')'
 		ass:txt(x, y, align, text, opts)
 	end
@@ -348,18 +353,26 @@ function Timeline:render()
 			local time_width_end = timestamp_width(state.destination_time_human, time_opts)
 			local min_x, max_x = bax + spacing + 5 + time_width, bbx - spacing - 5 - time_width_end
 			if x < min_x then x = min_x elseif x + width > max_x then x, align = max_x, 6 end
-			draw_timeline_text(x, fcy, align, human, cache_opts)
+			-- 不显示缓存时间
+			-- draw_timeline_text(x, fcy, align, human, cache_opts)
 		end
 
-		-- Elapsed time
-		if state.time_human then
-			draw_timeline_text(bax + spacing, fcy, 4, state.time_human, time_opts)
-		end
+		-- -- Elapsed time
+		-- if state.time_human then
+		-- 	draw_timeline_text(bax + spacing, fcy, 4, state.time_human, time_opts)
+		-- end
 
-		-- End time
-		if state.destination_time_human then
-			draw_timeline_text(bbx - spacing, fcy, 6, state.destination_time_human, time_opts)
-		end
+		-- -- End time
+		-- if state.destination_time_human then
+		-- 	draw_timeline_text(bbx - spacing, fcy, 6, state.destination_time_human, time_opts)
+		-- end
+
+		-- 替换播放进度
+		local progress_info = "⚡    " .. state.time_human .. "  /  " .. state.destination_time_human
+		draw_timeline_text(bax + spacing, fcy, 4, progress_info, time_opts)
+
+		local current_time = "🕒   " .. os.date("%H:%M:%S", os.time())
+		draw_timeline_text(bbx - spacing, fcy, 6, current_time, time_opts)
 	end
 
 	-- Hovered time and chapter

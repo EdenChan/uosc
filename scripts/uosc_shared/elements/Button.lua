@@ -1,6 +1,6 @@
 local Element = require('uosc_shared/elements/Element')
 
----@alias ButtonProps {icon: string; on_click: function; anchor_id?: string; active?: boolean; badge?: string|number; foreground?: string; background?: string; tooltip?: string}
+---@alias ButtonProps {icon: string; on_click: function; anchor_id?: string; active?: boolean; badge?: string|number; foreground?: string; background?: string; tooltip?: string; hold:boolen}
 
 ---@class Button : Element
 local Button = class(Element)
@@ -23,6 +23,7 @@ function Button:init(id, props)
 end
 
 function Button:on_coordinates() self.font_size = round((self.by - self.ay) * 0.7) end
+
 function Button:on_mbtn_left_down()
 	-- Don't accept clicks while hidden.
 	if self:get_visibility() <= 0 then return end
@@ -31,6 +32,18 @@ function Button:on_mbtn_left_down()
 	-- For example, handler might add a menu to the end of the element stack, and that
 	-- than picks up this click even we are in right now, and instantly closes itself.
 	mp.add_timeout(0.01, self.on_click)
+
+	if self.hold then
+		-- 按下左键，设置长按定时器，进行自动累加/重做
+		set_press_and_hold_timer(function()
+			mp.add_timeout(0.01, self.on_click)
+		end)
+	end
+end
+
+function Button:on_mbtn_left_up()
+	-- 抬起左键，清除长按定时器，取消自动累加
+	unset_press_and_hold_timer()
 end
 
 function Button:render()
@@ -40,16 +53,17 @@ function Button:render()
 	local ass = assdraw.ass_new()
 	local is_hover = self.proximity_raw == 0
 	local is_hover_or_active = is_hover or self.active
+
 	local foreground = self.active and self.background or self.foreground
-	local background = self.active and self.foreground or self.background
+	local background = is_hover_or_active and "cccccc" or self.background
 
 	-- Background
-	if is_hover_or_active then
-		ass:rect(self.ax, self.ay, self.bx, self.by, {
-			color = self.active and background or foreground, radius = 2,
-			opacity = visibility * (self.active and 1 or 0.3),
-		})
-	end
+	ass:rect(self.ax, self.ay, self.bx, self.by, {
+		-- color = 'self.active and background or foreground', radius = 2,
+		color = background, radius = 2,
+		-- opacity = visibility * (self.active and 1 or 0.3),
+		opacity = visibility * (self.active and 0.9 or 0.6),
+	})
 
 	-- Tooltip on hover
 	if is_hover and self.tooltip then ass:tooltip(self, self.tooltip) end
@@ -65,7 +79,7 @@ function Button:render()
 		local bx, by = self.bx - 1, self.by - 1
 		ass:rect(bx - width, by - height, bx, by, {
 			color = foreground, radius = 2, opacity = visibility,
-			border = self.active and 0 or 1, border_color = background,
+			border = self.active and 0 or 1, border_color = "bg",
 		})
 		ass:txt(bx - width / 2, by - height / 2, 5, self.badge, badge_opts)
 

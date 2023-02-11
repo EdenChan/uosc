@@ -20,26 +20,36 @@ function Controls:init()
 	self.layout = {}
 
 	-- Serialize control elements
+	-- 在 ? 后面加上 -h 前缀表示是长按累加/重做的按键
 	local shorthands = {
-		menu = 'command:menu:script-binding uosc/menu-blurred?Menu',
-		subtitles = 'command:subtitles:script-binding uosc/subtitles#sub>0?Subtitles',
-		audio = 'command:graphic_eq:script-binding uosc/audio#audio>1?Audio',
-		['audio-device'] = 'command:speaker:script-binding uosc/audio-device?Audio device',
-		video = 'command:theaters:script-binding uosc/video#video>1?Video',
-		playlist = 'command:list_alt:script-binding uosc/playlist?Playlist',
-		chapters = 'command:bookmark:script-binding uosc/chapters#chapters>0?Chapters',
-		['editions'] = 'command:bookmarks:script-binding uosc/editions#editions>1?Editions',
-		['stream-quality'] = 'command:high_quality:script-binding uosc/stream-quality?Stream quality',
-		['open-file'] = 'command:file_open:script-binding uosc/open-file?Open file',
-		['items'] = 'command:list_alt:script-binding uosc/items?Playlist/Files',
-		prev = 'command:arrow_back_ios:script-binding uosc/prev?Previous',
-		next = 'command:arrow_forward_ios:script-binding uosc/next?Next',
-		first = 'command:first_page:script-binding uosc/first?First',
-		last = 'command:last_page:script-binding uosc/last?Last',
-		['loop-playlist'] = 'cycle:repeat:loop-playlist:no/inf!?Loop playlist',
-		['loop-file'] = 'cycle:repeat_one:loop-file:no/inf!?Loop file',
-		shuffle = 'toggle:shuffle:shuffle?Shuffle',
-		fullscreen = 'cycle:crop_free:fullscreen:no/yes=fullscreen_exit!?Fullscreen',
+		menu = 'command:menu:script-binding uosc/menu?菜单',
+		['script-stats'] = 'command:info_outline:script-binding stats/display-stats-toggle?视频信息',
+		['play_pause'] = 'cycle:not_started:pause:yes=play_circle/no=pause_circle?暂停/播放',
+		subtitles = 'command:subtitles:script-binding uosc/subtitles#sub>0?字幕选择',
+		audio = 'command:graphic_eq:script-binding uosc/audio#audio>1?音轨选择',
+		['audio-device'] = 'command:speaker:script-binding uosc/audio-device?音频设备',
+		video = 'command:theaters:script-binding uosc/video#video>1?视频轨道选择',
+		playlist = 'command:list_alt:script-binding uosc/playlist?播放列表',
+		chapters = 'command:bookmark:script-binding uosc/chapters#chapters>0?章节选择',
+		['editions'] = 'command:bookmarks:script-binding uosc/editions#editions>1?版本',
+		['stream-quality'] = 'command:high_quality:script-binding uosc/stream-quality?流品质',
+		['open-file'] = 'command:file_open:script-binding uosc/open-file?加载文件',
+		['items'] = 'command:list_alt:script-binding uosc/open-file?播放列表/文件浏览器',
+		prev = 'command:arrow_back_ios:script-binding uosc/prev?上一个文件',
+		next = 'command:arrow_forward_ios:script-binding uosc/next?下一个文件',
+		first = 'command:first_page:script-binding uosc/first?首位文件',
+		last = 'command:last_page:script-binding uosc/last?末位文件',
+		['ab-loop'] = 'command:loop:ab-loop?AB循环',
+		['ontop'] = 'toggle:push_pin:ontop?保持最前',
+		['loop-playlist'] = 'cycle:repeat:loop-playlist:no/inf!?列表循环',
+		['loop-file'] = 'cycle:repeat_one:loop-file:no/inf!?单曲循环',
+		shuffle = 'toggle:shuffle:shuffle?随机播放',
+		fullscreen = 'cycle:crop_free:fullscreen:no/yes=fullscreen_exit!?切换全屏',
+		['frame-step'] = 'command:arrow_forward:frame-step?-h 单帧步进',
+		['frame-back-step'] = 'command:arrow_back: frame-back-step?-h 单帧步退',
+		['zoom-in'] = 'command:zoom_in:add video-zoom 0.1?-h 放大画面',
+		['zoom-out'] = 'command:zoom_out:add video-zoom -0.1?-h 缩小画面',
+		['zoom-reset'] = 'command:autorenew:set video-zoom 0;set video-pan-y 0;set video-pan-x 0;set contrast 0;set brightness 0;set gamma 0;set saturation 0?重置画面'
 	}
 
 	-- Parse out disposition/config pairs
@@ -66,6 +76,14 @@ function Controls:init()
 		local config = shorthands[item.config] and shorthands[item.config] or item.config
 		local config_tooltip = split(config, ' *%? *')
 		local tooltip = config_tooltip[2]
+		-- 判断是否属于自动累加按键
+		local hold = false
+		if tooltip ~= nil then
+			hold = tooltip:sub(1, 3) == '-h '
+			if hold then
+				tooltip = tooltip:sub(4)
+			end
+		end
 		config = shorthands[config_tooltip[1]]
 			and split(shorthands[config_tooltip[1]], ' *%? *')[1] or config_tooltip[1]
 		local config_badge = split(config, ' *# *')
@@ -107,9 +125,16 @@ function Controls:init()
 				local element = Button:new('control_' .. i, {
 					icon = params[1],
 					anchor_id = 'controls',
-					on_click = function() mp.command(params[2]) end,
+					on_click = function()
+						local commands = split(params[2], ";")
+						-- 支持多条命令
+						for index = 1, #commands do
+							mp.command(commands[index])
+						end
+					end,
 					tooltip = tooltip,
 					count_prop = 'sub',
+					hold = hold
 				})
 				table_assign(control, {element = element, sizing = 'static', scale = 1, ratio = 1})
 				if badge then self:register_badge_updater(badge, element) end

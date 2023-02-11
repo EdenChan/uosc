@@ -1,6 +1,6 @@
 local Element = require('uosc_shared/elements/Element')
 
----@alias TopBarButtonProps {icon: string; background: string; anchor_id?: string; command: string|fun()}
+---@alias TopBarButtonProps {icon: string; background: string; anchor_id?: string; command: string|fun(); hide_when_not_in_fullscreen: boolean; tooltip: string; hold: boolean;}
 
 ---@class TopBarButton : Element
 local TopBarButton = class(Element)
@@ -14,10 +14,25 @@ function TopBarButton:init(id, props)
 	self.icon = props.icon
 	self.background = props.background
 	self.command = props.command
+	self.hide_when_not_in_fullscreen = props.hide_when_not_in_fullscreen and true or false
+	self.tooltip = props.tooltip
+	self.hold = props.hold and true or false
 end
 
 function TopBarButton:on_mbtn_left_down()
 	mp.command(type(self.command) == 'function' and self.command() or self.command)
+
+	if self.hold then
+		-- 按下左键，设置长按定时器，进行自动累加/重做
+		set_press_and_hold_timer(function()
+			mp.command(type(self.command) == 'function' and self.command() or self.command)
+		end)
+	end
+end
+
+function TopBarButton:on_mbtn_left_up()
+	-- 抬起左键，清除长按定时器，取消自动累加
+	unset_press_and_hold_timer()
 end
 
 function TopBarButton:render()
@@ -27,7 +42,20 @@ function TopBarButton:render()
 
 	-- Background on hover
 	if self.proximity_raw == 0 then
-		ass:rect(self.ax, self.ay, self.bx, self.by, {color = self.background, opacity = visibility})
+		-- ass:rect(self.ax, self.ay, self.bx, self.by, {color = self.background, opacity = visibility})
+		local rev_bg = "cccccc"
+		local cur_opacity = 0.6
+		if self.background == "e81123" then
+			rev_bg, cur_opacity = serialize_rgba(self.background).color, visibility
+		end
+		ass:rect(self.ax, self.ay, self.bx, self.by, {color = rev_bg, opacity = cur_opacity})
+		if self.tooltip then
+			ass:tooltip(self, self.tooltip)
+		end
+	else
+		-- 此处将 rrggbb 颜色转成 ass:rect 方法所需的 bbggrr 序列，以统一颜色设置
+		rev_bg = serialize_rgba(self.background).color
+		ass:rect(self.ax, self.ay, self.bx, self.by, {color = rev_bg, opacity = 0.6})
 	end
 
 	local width, height = self.bx - self.ax, self.by - self.ay
@@ -60,10 +88,21 @@ function TopBar:init()
 	end
 
 	-- Order aligns from right to left
+	-- hide_when_not_in_fullscreen 选项仅可在没有设置 no-border 的情况下启用
 	self.buttons = {
-		TopBarButton:new('tb_close', {icon = 'close', background = '2311e8', command = 'quit'}),
-		TopBarButton:new('tb_max', {icon = 'crop_square', background = '222222', command = decide_maximized_command}),
-		TopBarButton:new('tb_min', {icon = 'minimize', background = '222222', command = 'cycle window-minimized'}),
+		-- TopBarButton:new('tb_close', {icon = 'close', background = '2311e8', command = 'quit', hide_when_not_in_fullscreen = false}),
+		-- 反转 bbggrr 顺序
+		TopBarButton:new('tb_close', {icon = 'close', background = 'e81123', command = 'quit', hide_when_not_in_fullscreen = false}),
+		TopBarButton:new('tb_max', {icon = 'crop_square', background = options.background, command = decide_maximized_command, hide_when_not_in_fullscreen = false}),
+		TopBarButton:new('tb_min', {icon = 'minimize', background = options.background, command = 'cycle window-minimized', hide_when_not_in_fullscreen = false}),
+		-- TopBarButton:new('tb_fullscreen', {icon = 'fullscreen', background = options.background, command = 'cycle fullscreen'}),
+		TopBarButton:new('tb_zoom_reset', {icon = 'autorenew', background = options.background, command = 'set video-zoom 0;set video-pan-y 0;set video-pan-x 0;set contrast 0;set brightness 0;set gamma 0;set saturation 0', tooltip = '重置画面'}),
+		TopBarButton:new('tb_move_right', {icon = 'keyboard_arrow_right', background = options.background, command = 'add video-pan-x -0.05', tooltip = '镜头右移', hold = true}),
+		TopBarButton:new('tb_move_left', {icon = 'keyboard_arrow_left', background = options.background, command = 'add video-pan-x 0.05', tooltip = '镜头左移', hold = true}),
+		TopBarButton:new('tb_move_down', {icon = 'keyboard_arrow_down', background = options.background, command = 'add video-pan-y -0.05', tooltip = '镜头下移', hold = true}),
+		TopBarButton:new('tb_move_up', {icon = 'keyboard_arrow_up', background = options.background, command = 'add video-pan-y 0.05', tooltip = '镜头上移', hold = true}),
+		TopBarButton:new('tb_zoom_out', {icon = 'zoom_out', background = options.background, command = 'add video-zoom -0.1', tooltip = '缩小', hold = true}),
+		TopBarButton:new('tb_zoom_in', {icon = 'zoom_in', background = options.background, command = 'add video-zoom 0.1', tooltip = '放大', hold = true}),
 	}
 end
 
@@ -75,7 +114,8 @@ function TopBar:decide_enabled()
 	end
 	self.enabled = self.enabled and (options.top_bar_controls or options.top_bar_title)
 	for _, element in ipairs(self.buttons) do
-		element.enabled = self.enabled and options.top_bar_controls
+		hide_in_screen = element.hide_when_not_in_fullscreen and not state.fullscreen
+		element.enabled = self.enabled and options.top_bar_controls and not hide_in_screen
 	end
 end
 
@@ -93,9 +133,11 @@ function TopBar:update_dimensions()
 
 	local button_bx = self.bx
 	for _, element in pairs(self.buttons) do
-		element.ax, element.bx = button_bx - self.button_width, button_bx
-		element.ay, element.by = self.ay, self.by
-		button_bx = button_bx - self.button_width
+		if element.enabled then
+			element.ax, element.bx = button_bx - self.button_width, button_bx
+			element.ay, element.by = self.ay, self.by
+			button_bx = button_bx - self.button_width
+		end
 	end
 end
 
@@ -154,7 +196,7 @@ function TopBar:render()
 		local text = self.show_alt_title and state.alt_title or state.title
 		if max_bx - title_ax > self.font_size * 3 and text and text ~= '' then
 			local opts = {
-				size = self.font_size, wrap = 2, color = bgt, border = 1, border_color = bg, opacity = visibility,
+				size = self.font_size, wrap = 2, color = bgt, border = 1, border_color = "202331", opacity = visibility,
 				clip = string.format('\\clip(%d, %d, %d, %d)', self.ax, self.ay, max_bx, self.by),
 			}
 			local bx = math.min(max_bx, title_ax + text_width(text, opts) + padding * 2)
@@ -171,7 +213,7 @@ function TopBar:render()
 			local font_size = self.font_size * 0.9
 			local height = font_size * 1.3
 			local by = title_ay + height
-			local opts = {size = font_size, wrap = 2, color = bgt, border = 1, border_color = bg, opacity = visibility}
+			local opts = {size = font_size, wrap = 2, color = bgt, border = 1, border_color = "202331", opacity = visibility}
 			local bx = math.min(max_bx, title_ax + text_width(state.alt_title, opts) + padding * 2)
 			opts.clip = string.format('\\clip(%d, %d, %d, %d)', title_ax, title_ay, bx, by)
 			ass:rect(title_ax, title_ay, bx, by, {
@@ -189,7 +231,7 @@ function TopBar:render()
 			local by = title_ay + height
 			local opts = {
 				size = font_size, italic = true, wrap = 2, color = bgt,
-				border = 1, border_color = bg, opacity = visibility * 0.8,
+				border = 1, border_color = "202331", opacity = visibility * 0.8,
 			}
 			local bx = math.min(max_bx, title_ax + text_width(text, opts) + padding * 2)
 			opts.clip = string.format('\\clip(%d, %d, %d, %d)', title_ax, title_ay, bx, by)
