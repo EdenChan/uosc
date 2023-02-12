@@ -489,25 +489,6 @@ function Menu:open_selected_item(opts)
 	end
 end
 
--- test_timer = nil
--- function testHandler(data)
--- 	return function(data)
--- 		if (data.event == "down") then
--- 			if test_timer == nil then
--- 				test_timer = mp.add_periodic_timer(1, function()
--- 					print("time out 1111111")
--- 				end)
--- 			end
--- 		elseif(data.event == "up") then
--- 			if test_timer ~= nil then
--- 				test_timer:kill()
--- 				test_timer = nil
--- 			end
--- 		end
--- 		print(utils.format_json(data))
--- 	end
--- end
-
 function Menu:open_selected_item_soft() self:open_selected_item({keep_open = true}) end
 function Menu:open_selected_item_preselect() self:open_selected_item({preselect_submenu_item = true}) end
 function Menu:select_item_below_cursor() self.current.selected_index = self:get_item_index_below_cursor() end
