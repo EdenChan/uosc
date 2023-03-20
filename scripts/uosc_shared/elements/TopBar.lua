@@ -61,7 +61,7 @@ function TopBarButton:render()
 	local width, height = self.bx - self.ax, self.by - self.ay
 	local icon_size = math.min(width, height) * 0.5
 	ass:icon(self.ax + width / 2, self.ay + height / 2, icon_size, self.icon, {
-		opacity = visibility, border = options.text_border,
+		opacity = visibility, border = options.text_border, blur=20
 	})
 
 	return ass
@@ -97,10 +97,10 @@ function TopBar:init()
 		TopBarButton:new('tb_min', {icon = 'minimize', background = options.background, command = 'cycle window-minimized', hide_when_not_in_fullscreen = false}),
 		-- TopBarButton:new('tb_fullscreen', {icon = 'fullscreen', background = options.background, command = 'cycle fullscreen'}),
 		TopBarButton:new('tb_zoom_reset', {icon = 'autorenew', background = options.background, command = 'set video-zoom 0;set video-pan-y 0;set video-pan-x 0;set contrast 0;set brightness 0;set gamma 0;set saturation 0', tooltip = '重置画面'}),
-		TopBarButton:new('tb_move_right', {icon = 'keyboard_arrow_right', background = options.background, command = 'add video-pan-x -0.05', tooltip = '镜头右移', hold = true}),
-		TopBarButton:new('tb_move_left', {icon = 'keyboard_arrow_left', background = options.background, command = 'add video-pan-x 0.05', tooltip = '镜头左移', hold = true}),
-		TopBarButton:new('tb_move_down', {icon = 'keyboard_arrow_down', background = options.background, command = 'add video-pan-y -0.05', tooltip = '镜头下移', hold = true}),
-		TopBarButton:new('tb_move_up', {icon = 'keyboard_arrow_up', background = options.background, command = 'add video-pan-y 0.05', tooltip = '镜头上移', hold = true}),
+		TopBarButton:new('tb_move_right', {icon = 'keyboard_arrow_right', background = options.background, command = 'add video-pan-x -0.02', tooltip = '镜头右移', hold = true}),
+		TopBarButton:new('tb_move_left', {icon = 'keyboard_arrow_left', background = options.background, command = 'add video-pan-x 0.02', tooltip = '镜头左移', hold = true}),
+		TopBarButton:new('tb_move_down', {icon = 'keyboard_arrow_down', background = options.background, command = 'add video-pan-y -0.02', tooltip = '镜头下移', hold = true}),
+		TopBarButton:new('tb_move_up', {icon = 'keyboard_arrow_up', background = options.background, command = 'add video-pan-y 0.02', tooltip = '镜头上移', hold = true}),
 		TopBarButton:new('tb_zoom_out', {icon = 'zoom_out', background = options.background, command = 'add video-zoom -0.1', tooltip = '缩小', hold = true}),
 		TopBarButton:new('tb_zoom_in', {icon = 'zoom_in', background = options.background, command = 'add video-zoom 0.1', tooltip = '放大', hold = true}),
 	}
