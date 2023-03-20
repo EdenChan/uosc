@@ -1,11 +1,5 @@
---[[
-SOURCE_ https://github.com/tomasklaen/uosc/tree/main/scripts
-COMMIT_ b32ae2abaf52a22387e00dd2ade8659968554ab0
-
-极简主义设计驱动的多功能界面脚本群组，兼容 thumbfast 新缩略图引擎
-]]--
-
-local uosc_version = '4.5.0'
+--[[ uosc 4.6.0 - 2023-Feb-15 | https://github.com/tomasklaen/uosc ]]
+local uosc_version = '4.6.0'
 
 assdraw = require('mp.assdraw')
 opt = require('mp.options')
@@ -107,7 +101,7 @@ defaults = {
 	curtain_opacity = 0.5,
 	stream_quality_options = '4320,2160,1440,1080,720,480,360,240,144',
 	video_types= '3g2,3gp,asf,avi,f4v,flv,h264,h265,m2ts,m4v,mkv,mov,mp4,mp4v,mpeg,mpg,ogm,ogv,rm,rmvb,ts,vob,webm,wmv,y4m',
-	audio_types= 'aac,aiff,ape,au,dsf,dts,flac,m4a,mid,midi,mka,mp3,mp4a,oga,ogg,opus,spx,tak,tta,wav,weba,wma,wv',
+	audio_types= 'aac,ac3,aiff,ape,au,dsf,dts,flac,m4a,mid,midi,mka,mp3,mp4a,oga,ogg,opus,spx,tak,tta,wav,weba,wma,wv',
 	image_types= 'apng,avif,bmp,gif,j2k,jp2,jfif,jpeg,jpg,jxl,mj2,png,svg,tga,tif,tiff,webp',
 	subtitle_types = 'aqt,ass,gsub,idx,jss,lrc,mks,pgs,pjs,psb,rt,slt,smi,sub,sup,srt,ssa,ssf,ttxt,txt,usf,vt,vtt',
 	default_directory = '~/',
@@ -461,6 +455,7 @@ function update_margins()
 	state.margin_bottom = bottom
 
 	utils.shared_script_property_set('osc-margins', string.format('%f,%f,%f,%f', 0, 0, top, bottom))
+	mp.set_property_native("user-data/osc/margins", { l = 0, r = 0, t = top, b = bottom })
 end
 function create_state_setter(name, callback)
 	return function(_, value)
@@ -888,6 +883,10 @@ bind_command('playlist', create_self_updating_menu_opener({
 		return items
 	end,
 	on_select = function(index) mp.commandv('set', 'playlist-pos-1', tostring(index)) end,
+	on_move_item = function(from, to)
+		mp.commandv('playlist-move', tostring(math.max(from, to) - 1), tostring(math.min(from, to) - 1))
+	end,
+	on_delete_item = function(index) mp.commandv('playlist-remove', tostring(index - 1)) end,
 }))
 bind_command('chapters', create_self_updating_menu_opener({
 	title = '章节列表',
