@@ -23,14 +23,13 @@ function Button:init(id, props)
 end
 
 function Button:on_coordinates() self.font_size = round((self.by - self.ay) * 0.7) end
-
-function Button:on_mbtn_left_down()
+function Button:handle_cursor_down()
 	-- Don't accept clicks while hidden.
 	if self:get_visibility() <= 0 then return end
 	-- We delay the callback to next tick, otherwise we are risking race
 	-- conditions as we are in the middle of event dispatching.
 	-- For example, handler might add a menu to the end of the element stack, and that
-	-- than picks up this click even we are in right now, and instantly closes itself.
+	-- than picks up this click event we are in right now, and instantly closes itself.
 	mp.add_timeout(0.01, self.on_click)
 
 	if self.hold then
@@ -41,7 +40,7 @@ function Button:on_mbtn_left_down()
 	end
 end
 
-function Button:on_mbtn_left_up()
+function Button:handle_cursor_up()
 	-- 抬起左键，清除长按定时器，取消自动累加
 	unset_press_and_hold_timer()
 end
@@ -49,6 +48,10 @@ end
 function Button:render()
 	local visibility = self:get_visibility()
 	if visibility <= 0 then return end
+	if self.proximity_raw == 0 then
+		cursor.on_primary_down = function() self:handle_cursor_down() end
+		cursor.on_primary_up = function() self:handle_cursor_up() end
+	end
 
 	local ass = assdraw.ass_new()
 	local is_hover = self.proximity_raw == 0
@@ -58,16 +61,15 @@ function Button:render()
 	local background = is_hover_or_active and "cccccc" or self.background
 
 	-- Background
-	ass:rect(self.ax, self.ay, self.bx, self.by, {
-		-- color = 'self.active and background or foreground', radius = 2,
-		color = background, radius = 2,
-		-- opacity = visibility * (self.active and 1 or 0.3),
-		opacity = visibility * (self.active and 0.9 or 0.6),
-	})
+	if is_hover_or_active then
+		ass:rect(self.ax, self.ay, self.bx, self.by, {
+			color = background, radius = 2,
+			opacity = visibility * (self.active and 0.9 or 0.6),
+		})
+	end
 
 	-- Tooltip on hover
 	if is_hover and self.tooltip then ass:tooltip(self, self.tooltip) end
-
 
 	-- Badge
 	local icon_clip

@@ -1,13 +1,13 @@
---[[ uosc 4.6.0 - 2023-Feb-15 | https://github.com/tomasklaen/uosc ]]
-local uosc_version = '4.6.0'
+--[[ uosc 4.7.0 - 2023-Apr-15 | https://github.com/tomasklaen/uosc ]]
+local uosc_version = '4.7.0'
 
 assdraw = require('mp.assdraw')
 opt = require('mp.options')
 utils = require('mp.utils')
 msg = require('mp.msg')
 osd = mp.create_osd_overlay('ass-events')
-infinity = 1e309
-quarter_pi_sin = math.sin(math.pi / 4)
+INFINITY = 1e309
+QUARTER_PI_SIN = math.sin(math.pi / 4)
 
 -- Enables relative requires from `scripts` directory
 package.path = package.path .. ';' .. mp.find_config_file('scripts') .. '/?.lua'
@@ -26,12 +26,12 @@ defaults = {
 	timeline_size_min_fullscreen = 0,
 	timeline_size_max_fullscreen = 60,
 	timeline_start_hidden = false,
+	timeline_persistency = 'idle,audio',
 	timeline_opacity = 0.9,
 	timeline_border = 1,
 	timeline_step = 5,
 	timeline_chapters_opacity = 0.8,
 	timeline_cache = true,
-	timeline_persistency = 'idle,audio',
 
 	controls = 'menu,<has_chapter>chapters,gap,play_pause,gap,subtitles,audio,script-stats,<has_many_edition>editions,<has_many_video>video,<stream>stream-quality,gap,space,speed,space,shuffle,loop-playlist,loop-file,gap,prev,items,next,gap,fullscreen',
 	controls_size = 32,
@@ -43,15 +43,15 @@ defaults = {
 	volume = 'right',
 	volume_size = 40,
 	volume_size_fullscreen = 52,
+	volume_persistency = 'idle,audio',
 	volume_opacity = 0.9,
 	volume_border = 1,
 	volume_step = 1,
-	volume_persistency = 'idle,audio',
 
+	speed_persistency = 'idle,audio',
 	speed_opacity = 0.6,
 	speed_step = 0.1,
 	speed_step_is_factor = false,
-	speed_persistency = 'idle,audio',
 
 	menu_item_height = 36,
 	menu_item_height_fullscreen = 50,
@@ -63,12 +63,12 @@ defaults = {
 	top_bar = 'no-border',
 	top_bar_size = 40,
 	top_bar_size_fullscreen = 46,
+	top_bar_persistency = 'idle,audio',
 	top_bar_controls = true,
 	top_bar_title = 'yes',
 	top_bar_alt_title = '',
 	top_bar_alt_title_place = 'below',
 	top_bar_title_opacity = 0.8,
-	top_bar_persistency = 'idle,audio',
 
 	window_border_size = 1,
 	window_border_opacity = 0.8,
@@ -79,7 +79,6 @@ defaults = {
 
 	ui_scale = 1,
 	font_scale = 1,
-	font_bold = false,
 	text_border = 1.2,
 	text_width_estimation = true,
 	pause_on_click_shorter_than = 0, -- deprecated by below
@@ -95,6 +94,7 @@ defaults = {
 	total_time = false, -- deprecated by below
 	destination_time = 'playtime-remaining',
 	time_precision = 0,
+	font_bold = false,
 	autohide = false,
 	buffered_time_threshold = 60,
 	pause_indicator = 'flash',
@@ -106,11 +106,13 @@ defaults = {
 	subtitle_types = 'aqt,ass,gsub,idx,jss,lrc,mks,pgs,pjs,psb,rt,slt,smi,sub,sup,srt,ssa,ssf,ttxt,txt,usf,vt,vtt',
 	default_directory = '~/',
 	use_trash = false,
+	adjust_osd_margins = true,
 	chapter_ranges = 'openings:30abf964,endings:30abf964,ads:c54e4e80',
 	chapter_range_patterns = 'openings:オープニング;endings:エンディング',
 
 	idle_call_menu = 0,                       -- 空闲自动弹出上下文菜单
 	custom_font = '',                         -- 自定义界面字体
+	languages = 'slang,en',
 }
 options = table_shallow_copy(defaults)
 opt.read_options(options, 'uosc')
@@ -132,6 +134,10 @@ if options.autoload then mp.commandv('set', 'keep-open-pause', 'no') end
 -- Color shorthands
 fg, bg = serialize_rgba(options.foreground).color, serialize_rgba(options.background).color
 fgt, bgt = serialize_rgba(options.foreground_text).color, serialize_rgba(options.background_text).color
+
+--[[ INTERNATIONALIZATION ]]
+local intl = require('uosc_shared/lib/intl')
+t = intl.t
 
 --[[ CONFIG ]]
 
@@ -180,6 +186,10 @@ config = {
 	-- native rendering frequency could not be detected
 	render_delay = 1 / 60,
 	font = mp.get_property('options/osd-font'),
+	osd_margin_x = mp.get_property('osd-margin-x'),
+	osd_margin_y = mp.get_property('osd-margin-y'),
+	osd_alignment_x = mp.get_property('osd-align-x'),
+	osd_alignment_y = mp.get_property('osd-align-y'),
 	types = {
 		video = split(options.video_types, ' *, *'),
 		audio = split(options.audio_types, ' *, *'),
@@ -227,6 +237,7 @@ config = {
 				local title_parts = split(title or '', ' *> *')
 
 				for index, title_part in ipairs(#title_parts > 0 and title_parts or {''}) do
+					--title_part = t(title_part)
 					if index < #title_parts then
 						submenu_id = submenu_id .. title_part
 
@@ -320,12 +331,64 @@ end
 --[[ STATE ]]
 
 display = {width = 1280, height = 720, scale_x = 1, scale_y = 1, initialized = false}
-cursor = {hidden = true, hover_raw = false, x = 0, y = 0}
+cursor = {
+	x = 0,
+	y = 0,
+	hidden = true,
+	hover_raw = false,
+	-- Event handlers that are only fired on cursor, bound during render loop. Guidelines:
+	-- - element activations (clicks) go to `on_primary_down` handler
+	-- - `on_primary_up` is only for clearing dragging/swiping, and prevents autohide when bound
+	on_primary_down = nil,
+	on_primary_up = nil,
+	on_wheel_down = nil,
+	on_wheel_up = nil,
+	-- Called at the beginning of each render
+	reset_handlers = function()
+		cursor.on_primary_down, cursor.on_primary_up = nil, nil
+		cursor.on_wheel_down, cursor.on_wheel_up = nil, nil
+	end,
+	-- Enables pointer key group captures needed by handlers (called at the end of each render)
+	mbtn_left_enabled = nil,
+	wheel_enabled = nil,
+	decide_keybinds = function()
+		local enable_mbtn_left = (cursor.on_primary_down or cursor.on_primary_up) ~= nil
+		local enable_wheel = (cursor.on_wheel_down or cursor.on_wheel_up) ~= nil
+		if enable_mbtn_left ~= cursor.mbtn_left_enabled then
+			mp[(enable_mbtn_left and 'enable' or 'disable') .. '_key_bindings']('mbtn_left')
+			cursor.mbtn_left_enabled = enable_mbtn_left
+		end
+		if enable_wheel ~= cursor.wheel_enabled then
+			mp[(enable_wheel and 'enable' or 'disable') .. '_key_bindings']('wheel')
+			cursor.wheel_enabled = enable_wheel
+		end
+	end,
+	-- Cursor auto-hiding after period of inactivity
+	autohide = function()
+		if not cursor.on_primary_up and not Menu:is_open() then handle_mouse_leave() end
+	end,
+	autohide_timer = (function()
+		local timer = mp.add_timeout(mp.get_property_native('cursor-autohide') / 1000, function() cursor.autohide() end)
+		timer:kill()
+		return timer
+	end)(),
+	queue_autohide = function()
+		if options.autohide and not cursor.on_primary_up then
+			cursor.autohide_timer:kill()
+			cursor.autohide_timer:resume()
+		end
+	end
+}
 state = {
-	os = (function()
-		if os.getenv('windir') ~= nil then return 'windows' end
-		local homedir = os.getenv('HOME')
-		if homedir ~= nil and string.sub(homedir, 1, 6) == '/Users' then return 'macos' end
+	platform = (function()
+		local platform = mp.get_property_native('platform')
+		if platform then
+			if itable_index_of({'windows', 'darwin'}, platform) then return platform end
+		else
+			if os.getenv('windir') ~= nil then return 'windows' end
+			local homedir = os.getenv('HOME')
+			if homedir ~= nil and string.sub(homedir, 1, 6) == '/Users' then return 'darwin' end
+		end
 		return 'linux'
 	end)(),
 	cwd = mp.get_property('working-directory'),
@@ -360,10 +423,6 @@ state = {
 	has_chapter = false,
 	has_playlist = false,
 	shuffle = options.shuffle,
-	cursor_autohide_timer = mp.add_timeout(mp.get_property_native('cursor-autohide') / 1000, function()
-		if not options.autohide then return end
-		handle_mouse_leave()
-	end),
 	mouse_bindings_enabled = false,
 	uncached_ranges = nil,
 	cache = nil,
@@ -377,6 +436,8 @@ state = {
 	playlist_pos = 0,
 	margin_top = 0,
 	margin_bottom = 0,
+	margin_left = 0,
+	margin_right = 0,
 	hidpi_scale = 1,
 }
 thumbnail = {width = 0, height = 0, disabled = false, pause = false}
@@ -414,6 +475,7 @@ function update_fullormaxed()
 	state.fullormaxed = state.fullscreen or state.maximized
 	update_display_dimensions()
 	Elements:trigger('prop_fullormaxed', state.fullormaxed)
+	update_cursor_position(INFINITY, INFINITY)
 end
 
 function update_human_times()
@@ -440,22 +502,42 @@ end
 function update_margins()
 	if display.height == 0 then return end
 
+	local function causes_margin(element)
+		return element and element.enabled and (element:is_persistent() or element.min_visibility > 0.5)
+	end
+	local timeline, top_bar, controls, volume = Elements.timeline, Elements.top_bar, Elements.controls, Elements.volume
 	-- margins are normalized to window size
-	local timeline, top_bar, controls = Elements.timeline, Elements.top_bar, Elements.controls
-	local bottom_y = controls and controls.enabled and controls.ay or timeline.ay
-	local top, bottom = 0, (display.height - bottom_y) / display.height
+	local left, right, top, bottom = 0, 0, 0, 0
 
-	if top_bar.enabled and top_bar:get_visibility() > 0 then
-		top = (top_bar.size or 0) / display.height
+	if causes_margin(controls) then bottom = (display.height - controls.ay) / display.height
+	elseif causes_margin(timeline) then bottom = (display.height - timeline.ay) / display.height end
+
+	if causes_margin(top_bar) then top = top_bar.title_by / display.height end
+
+	if causes_margin(volume) then
+		if options.volume == 'left' then left = volume.bx / display.width
+		elseif options.volume == 'right' then right = volume.ax / display.width end
 	end
 
-	if top == state.margin_top and bottom == state.margin_bottom then return end
+	if top == state.margin_top and bottom == state.margin_bottom and
+		left == state.margin_left and right == state.margin_right then return end
 
 	state.margin_top = top
 	state.margin_bottom = bottom
+	state.margin_left = left
+	state.margin_right = right
 
 	utils.shared_script_property_set('osc-margins', string.format('%f,%f,%f,%f', 0, 0, top, bottom))
-	mp.set_property_native("user-data/osc/margins", { l = 0, r = 0, t = top, b = bottom })
+	mp.set_property_native('user-data/osc/margins', { l = left, r = right, t = top, b = bottom })
+
+	if not options.adjust_osd_margins then return end
+	local osd_margin_y, osd_margin_x, osd_factor_x = 0, 0, display.width / display.height * 720
+	if config.osd_alignment_y == 'bottom' then osd_margin_y = round(bottom * 720)
+	elseif config.osd_alignment_y == 'top' then osd_margin_y = round(top * 720) end
+	if config.osd_alignment_x == 'left' then osd_margin_x = round(left * osd_factor_x)
+	elseif config.osd_alignment_x == 'right' then osd_margin_x = round(right * osd_factor_x) end
+	mp.set_property_native('osd-margin-y', osd_margin_y + config.osd_margin_y)
+	mp.set_property_native('osd-margin-x', osd_margin_x + config.osd_margin_x)
 end
 function create_state_setter(name, callback)
 	return function(_, value)
@@ -471,18 +553,34 @@ function set_state(name, value)
 end
 
 function update_cursor_position(x, y)
+	local old_x, old_y = cursor.x, cursor.y
+
 	-- mpv reports initial mouse position on linux as (0, 0), which always
 	-- displays the top bar, so we hardcode cursor position as infinity until
 	-- we receive a first real mouse move event with coordinates other than 0,0.
 	if not state.first_real_mouse_move_received then
 		if x > 0 and y > 0 then state.first_real_mouse_move_received = true
-		else x, y = infinity, infinity end
+		else x, y = INFINITY, INFINITY end
 	end
 
 	-- add 0.5 to be in the middle of the pixel
 	cursor.x, cursor.y = (x + 0.5) / display.scale_x, (y + 0.5) / display.scale_y
 
-	Elements:update_proximities()
+	if old_x ~= cursor.x or old_y ~= cursor.y then
+		Elements:update_proximities()
+
+		if cursor.x == INFINITY or cursor.y == INFINITY then
+			cursor.hidden = true
+			Elements:trigger('global_mouse_leave')
+		elseif cursor.hidden then
+			cursor.hidden = false
+			Elements:trigger('global_mouse_enter')
+		end
+
+		Elements:proximity_trigger('mouse_move')
+		cursor.queue_autohide()
+	end
+
 	request_render()
 end
 
@@ -497,27 +595,7 @@ function handle_mouse_leave()
 		end
 	end
 
-	cursor.hidden = true
-	Elements:update_proximities()
-	Elements:trigger('global_mouse_leave')
-end
-
-function handle_mouse_enter(x, y)
-	cursor.hidden = false
-	update_cursor_position(x, y)
-	Elements:trigger('global_mouse_enter')
-end
-
-function handle_mouse_move(x, y)
-	update_cursor_position(x, y)
-	Elements:proximity_trigger('mouse_move')
-	request_render()
-
-	-- Restart timer that hides UI when mouse is autohidden
-	if options.autohide then
-		state.cursor_autohide_timer:kill()
-		state.cursor_autohide_timer:resume()
-	end
+	update_cursor_position(INFINITY, INFINITY)
 end
 
 function handle_file_end()
@@ -593,23 +671,23 @@ if options.click_threshold > 0 then
 	mp.enable_key_bindings('mouse_movement', 'allow-vo-dragging+allow-hide-cursor')
 end
 
-function update_mouse_pos(_, mouse)
+function handle_mouse_pos(_, mouse)
 	if not mouse then return end
 	if cursor.hover_raw and not mouse.hover then
 		handle_mouse_leave()
 	else
-		if cursor.hidden then handle_mouse_enter(mouse.x, mouse.y) end
-		handle_mouse_move(mouse.x, mouse.y)
+		update_cursor_position(mouse.x, mouse.y)
 	end
 	cursor.hover_raw = mouse.hover
 end
-mp.observe_property('mouse-pos', 'native', update_mouse_pos)
+mp.observe_property('mouse-pos', 'native', handle_mouse_pos)
 mp.observe_property('osc', 'bool', function(name, value) if value == true then mp.set_property('osc', 'no') end end)
 mp.register_event('file-loaded', function()
 	set_state('path', normalize_path(mp.get_property_native('path')))
 	Elements:flash({'top_bar'})
 end)
 mp.register_event('end-file', function(event)
+	set_state('path', nil)
 	if event.reason == 'eof' then
 		file_end_timer:kill()
 		handle_file_end()
@@ -681,16 +759,15 @@ mp.observe_property('duration', 'number', create_state_setter('duration', update
 mp.observe_property('speed', 'number', create_state_setter('speed', update_human_times))
 mp.observe_property('track-list', 'native', function(name, value)
 	-- checks the file dispositions
-	local is_image = false
-	local types = {sub = 0, audio = 0, video = 0}
+	local types = {sub = 0, image = 0, audio = 0, video = 0}
 	for _, track in ipairs(value) do
 		if track.type == 'video' then
-			is_image = track.image
-			if not is_image and not track.albumart then types.video = types.video + 1 end
+			if track.image or track.albumart then types.image = types.image + 1
+			else types.video = types.video + 1 end
 		elseif types[track.type] then types[track.type] = types[track.type] + 1 end
 	end
 	set_state('is_audio', types.video == 0 and types.audio > 0)
-	set_state('is_image', is_image)
+	set_state('is_image', types.image > 0 and types.video == 0 and types.audio == 0)
 	set_state('has_audio', types.audio > 0)
 	set_state('has_many_audio', types.audio > 1)
 	set_state('has_sub', types.sub > 0)
@@ -794,10 +871,33 @@ mp.observe_property('core-idle', 'native', create_state_setter('core_idle'))
 
 --[[ KEY BINDS ]]
 
+-- Pointer related binding groups
+function make_cursor_handler(event, cb)
+	return function(...)
+		call_maybe(cursor[event], ...)
+		call_maybe(cb, ...)
+		cursor.queue_autohide() -- refresh cursor autohide timer
+	end
+end
+mp.set_key_bindings({
+	{
+		'mbtn_left',
+		make_cursor_handler('on_primary_up'),
+		make_cursor_handler('on_primary_down', function(...)
+			handle_mouse_pos(nil, mp.get_property_native('mouse-pos'))
+		end),
+	},
+	{'mbtn_left_dbl', 'ignore'},
+}, 'mbtn_left', 'force')
+mp.set_key_bindings({
+	{'wheel_up', make_cursor_handler('on_wheel_up')},
+	{'wheel_down', make_cursor_handler('on_wheel_down')},
+}, 'wheel', 'force')
+
 -- Adds a key binding that respects rerouting set by `key_binding_overwrites` table.
---- name string
---- callback fun(event: table)
---- flags nil|string
+---@param name string
+---@param callback fun(event: table)
+---@param flags nil|string
 function bind_command(name, callback, flags)
 	mp.add_key_binding(nil, name, function(...)
 		if key_binding_overwrites[name] then mp.command(key_binding_overwrites[name])
@@ -916,9 +1016,10 @@ bind_command('editions', create_self_updating_menu_opener({
 	serializer = function(editions, current_id)
 		local items = {}
 		for _, edition in ipairs(editions or {}) do
+			local edition_id_1 = tostring(edition.id + 1)
 			items[#items + 1] = {
-				title = edition.title or '版本',
-				hint = tostring(edition.id + 1),
+				title = edition.title or t('Edition %s', edition_id_1),
+				hint = edition_id_1,
 				value = edition.id,
 				active = edition.id == current_id,
 			}
@@ -931,11 +1032,11 @@ bind_command('show-in-directory', function()
 	-- Ignore URLs
 	if not state.path or is_protocol(state.path) then return end
 
-	if state.os == 'windows' then
+	if state.platform == 'windows' then
 		utils.subprocess_detached({args = {'explorer', '/select,', state.path}, cancellable = false})
-	elseif state.os == 'macos' then
+	elseif state.platform == 'darwin' then
 		utils.subprocess_detached({args = {'open', '-R', state.path}, cancellable = false})
-	elseif state.os == 'linux' then
+	elseif state.platform == 'linux' then
 		local result = utils.subprocess({args = {'nautilus', state.path}, cancellable = false})
 
 		-- Fallback opens the folder with xdg-open instead
@@ -1098,7 +1199,7 @@ bind_command('audio-device', create_self_updating_menu_opener({
 				local hint = string.match(device.name, ao .. '/(.+)')
 				if not hint then hint = device.name end
 				items[#items + 1] = {
-					title = device.description,
+					title = device.description:sub(1, 7) == 'Default' and t('Default %s', device.description:sub(9)) or t(device.description),
 					hint = hint,
 					active = device.name == current_device,
 					value = device.name,
@@ -1116,11 +1217,11 @@ bind_command('open-config-directory', function()
 	if config then
 		local args
 
-		if state.os == 'windows' then
+		if state.platform == 'windows' then
 			args = {'explorer', '/select,', config.path}
-		elseif state.os == 'macos' then
+		elseif state.platform == 'darwin' then
 			args = {'open', '-R', config.path}
-		elseif state.os == 'linux' then
+		elseif state.platform == 'linux' then
 			args = {'xdg-open', config.dirname}
 		end
 
@@ -1216,6 +1317,7 @@ mp.register_script_message('set-min-visibility', function(visibility, elements)
 end)
 mp.register_script_message('flash-elements', function(elements) Elements:flash(split(elements, ' *, *')) end)
 mp.register_script_message('overwrite-binding', function(name, command) key_binding_overwrites[name] = command end)
+mp.register_script_message('add-intl-directory', function(path) intl.add_directory(path) end)
 
 --[[ ELEMENTS ]]
 

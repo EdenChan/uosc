@@ -19,7 +19,7 @@ function TopBarButton:init(id, props)
 	self.hold = props.hold and true or false
 end
 
-function TopBarButton:on_mbtn_left_down()
+function TopBarButton:handle_cursor_down()
 	mp.command(type(self.command) == 'function' and self.command() or self.command)
 
 	if self.hold then
@@ -30,7 +30,7 @@ function TopBarButton:on_mbtn_left_down()
 	end
 end
 
-function TopBarButton:on_mbtn_left_up()
+function TopBarButton:handle_cursor_up()
 	-- 抬起左键，清除长按定时器，取消自动累加
 	unset_press_and_hold_timer()
 end
@@ -52,6 +52,8 @@ function TopBarButton:render()
 		if self.tooltip then
 			ass:tooltip(self, self.tooltip)
 		end
+		cursor.on_primary_down = function() self:handle_cursor_down() end
+		cursor.on_primary_up = function() self:handle_cursor_up() end
 	else
 		-- 此处将 rrggbb 颜色转成 ass:rect 方法所需的 bbggrr 序列，以统一颜色设置
 		rev_bg = serialize_rgba(self.background).color
@@ -61,7 +63,7 @@ function TopBarButton:render()
 	local width, height = self.bx - self.ax, self.by - self.ay
 	local icon_size = math.min(width, height) * 0.5
 	ass:icon(self.ax + width / 2, self.ay + height / 2, icon_size, self.icon, {
-		opacity = visibility, border = options.text_border, blur=20
+		opacity = visibility, border = options.text_border,
 	})
 
 	return ass
@@ -75,10 +77,8 @@ local TopBar = class(Element)
 function TopBar:new() return Class.new(self) --[[@as TopBar]] end
 function TopBar:init()
 	Element.init(self, 'top_bar')
-	self.size, self.size_max, self.size_min = 0, 0, 0
-	self.icon_size, self.spacing, self.font_size, self.title_bx = 1, 1, 1, 1
-	self.size_min_override = options.timeline_start_hidden and 0 or nil
-	self.top_border = options.timeline_border
+	self.size = 0
+	self.icon_size, self.spacing, self.font_size, self.title_bx, self.title_by = 1, 1, 1, 1, 1
 	self.show_alt_title = false
 	self.main_title, self.alt_title = nil, nil
 
@@ -125,6 +125,10 @@ end
 function TopBar:decide_titles()
 	self.alt_title = state.alt_title ~= '' and state.alt_title or nil
 	self.main_title = state.title ~= '' and state.title or nil
+
+	if (self.main_title == 'No file') then
+		self.main_title = t('No file')
+	end
 
 	-- Fall back to alt title if main is empty
 	if not self.main_title then
@@ -194,10 +198,6 @@ function TopBar:on_prop_maximized()
 	self:update_dimensions()
 end
 
-function TopBar:on_mbtn_left_down()
-	if cursor.x < self.title_bx then self:toggle_title() end
-end
-
 function TopBar:on_display() self:update_dimensions() end
 
 function TopBar:render()
@@ -223,6 +223,11 @@ function TopBar:render()
 			ass:rect(title_ax, title_ay, bx, self.by - bg_margin, {color = fg, opacity = visibility, radius = 2})
 			ass:txt(title_ax + (bx - title_ax) / 2, self.ay + (self.size / 2), 5, formatted_text, opts)
 			title_ax = bx + bg_margin
+			local rect = {ax = self.ax, ay = self.ay, bx = bx, by = self.by}
+
+			if get_point_to_rectangle_proximity(cursor, rect) == 0 then
+				cursor.on_primary_down = function() mp.command('script-binding uosc/playlist') end
+			end
 		end
 
 		-- Skip rendering titles if there's not enough horizontal space
@@ -236,6 +241,12 @@ function TopBar:render()
 				}
 				local bx = math.min(max_bx, title_ax + text_width(main_title, opts) + padding * 2)
 				local by = self.by - bg_margin
+				local rect = {ax = title_ax, ay = self.ay, bx = self.title_bx, by = self.by}
+
+				if get_point_to_rectangle_proximity(cursor, rect) == 0 then
+					cursor.on_primary_down = function() self:toggle_title() end
+				end
+
 				ass:rect(title_ax, title_ay, bx, by, {
 					color = bg, opacity = visibility * options.top_bar_title_opacity, radius = 2,
 				})
@@ -276,8 +287,12 @@ function TopBar:render()
 					color = bg, opacity = visibility * options.top_bar_title_opacity, radius = 2,
 				})
 				ass:txt(title_ax + padding, title_ay + height / 2, 4, text, opts)
+				title_ay = by + 1
 			end
 		end
+		self.title_by = title_ay - 1
+	else
+		self.title_by = self.ay
 	end
 
 	return ass
