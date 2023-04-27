@@ -157,7 +157,8 @@ function TopBar:update_dimensions()
 	self.ay = Elements.window_border.size
 	self.bx = display.width - Elements.window_border.size
 	self.by = self.size + Elements.window_border.size
-	self.title_bx = self.bx - (options.top_bar_controls and (self.button_width * 3) or 0)
+	-- self.title_bx = self.bx - (options.top_bar_controls and (self.button_width * 3) or 0)
+	self.title_bx = self.bx - (options.top_bar_controls and (self.button_width * #self.buttons) or 0)
 	self.ax = options.top_bar_title and Elements.window_border.size or self.title_bx
 
 	local button_bx = self.bx

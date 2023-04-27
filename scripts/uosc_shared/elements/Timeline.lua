@@ -368,7 +368,7 @@ function Timeline:render()
 		-- end
 
 		-- 替换播放进度
-		local progress_info = "⚡    " .. state.time_human .. "  /  " .. state.destination_time_human
+		local progress_info = "📽️    " .. state.time_human .. "  /  " .. state.destination_time_human
 		draw_timeline_text(bax + spacing, fcy, 4, progress_info, time_opts)
 
 		local current_time = "🕒   " .. os.date("%H:%M:%S", os.time())
